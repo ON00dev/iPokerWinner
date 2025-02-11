@@ -12,12 +12,7 @@ CARTAS = {'2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, 'T': 1
 BARALHO = [f"{valor}{naipe}" for valor in CARTAS.keys() for naipe in NAIPES.keys()]
 
 # Função para perguntar a ação de um jogador
-def perguntar_acao(jogador, pot, aposta_atual, fase, usuario, num_jogadores):
-    # Ignorar o Small Blind (Jogador 1) e Big Blind (Jogador 2) na fase pré-flop
-    if fase == 'pré-flop' and (jogador == 1 or jogador == 2):
-        print(f"Jogador {jogador} é {['Small Blind', 'Big Blind'][jogador == 2]}, ação ignorada.")
-        return 'ignorar', pot, aposta_atual
-
+def perguntar_acao(jogador, pot, aposta_atual, fase, usuario, num_jogadores, jogadores_ativos):
     while True:
         acao = input(f"\nQual foi a ação do jogador {jogador}? (fold, call, check, raise): ").lower()
         if acao in ['fold', 'call', 'check', 'raise']:
@@ -29,19 +24,21 @@ def perguntar_acao(jogador, pot, aposta_atual, fase, usuario, num_jogadores):
         print("Sugestão: Escolha entre 'fold', 'call', 'check' ou 'raise'.")
     
     if acao == 'fold':
-        return acao, pot, aposta_atual
+        if jogador != usuario:
+            jogadores_ativos.remove(jogador)
+        return acao, pot, aposta_atual, jogadores_ativos
 
     if acao == 'call':
         pot += aposta_atual
-        return acao, pot, aposta_atual
+        return acao, pot, aposta_atual, jogadores_ativos
 
     if acao == 'raise':
-        valor_raise = int(input(f"Qual foi o valor do raise do jogador {jogador}? "))
+        valor_raise = int(input(f"Qual foi o valor do raise do jogador {jogador}? $"))
         pot += valor_raise
         aposta_atual = valor_raise
-        return acao, pot, aposta_atual
+        return acao, pot, aposta_atual, jogadores_ativos
 
-    return acao, pot, aposta_atual
+    return acao, pot, aposta_atual, jogadores_ativos
 
 # Simulação de Monte Carlo para calcular equidade
 def calcular_equidade(hand, board, num_oponentes, iteracoes=5000):
@@ -99,34 +96,49 @@ def avaliar_forca(mao):
         return 1   # Carta Alta
 
 # Recomendar jogada com base na equidade e apostas
-def recomendar_jogada(equidade, aposta_atual, pot):
+def recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise=None):
     if equidade < 20:
         return "Fold"
     elif equidade < 40:
         return "Call" if aposta_atual > 0 else "Check"
     else:
-        raise_size = int(pot * 0.5)  # Raise de 50% do pote
-        return f"Raise ({raise_size} fichas)"
+        if ultimo_raise is None:
+            base = pot
+        else:
+            base = ultimo_raise
+        
+        sugestoes = {
+            "1/4x": int(base * 0.25),
+            "1/2x": int(base * 0.5),
+            "1x": base,
+            "2x": base * 2,
+            "3x": base * 3,
+            "All-in": pot  # Supondo que o all-in seja o valor total do pote
+        }
+        
+        print("\nSugestões de Raise:")
+        for opcao, valor in sugestoes.items():
+            print(f"{opcao}: ${valor}")
+        
+        return "Raise"
 
 # Função para perguntar as ações dos jogadores na ordem correta
-def perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, usuario):
+def perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, usuario, jogadores_ativos, ultimo_raise=None):
     # Ordem de ação: jogadores antes do usuário, usuário, jogadores após o usuário, e finalmente os blinds
-    for i in range(3, posicao_usuario):  # Jogadores antes do usuário (exceto blinds)
-        acao, pot, aposta_atual = perguntar_acao(i, pot, aposta_atual, fase, usuario, total_jogadores)
+    for i in range(1, total_jogadores + 1):  # Todos os jogadores, incluindo Small Blind e Big Blind
+        if i in jogadores_ativos:
+            acao, pot, aposta_atual, jogadores_ativos = perguntar_acao(i, pot, aposta_atual, fase, usuario, total_jogadores, jogadores_ativos)
+            if acao == 'raise':
+                ultimo_raise = aposta_atual
     
-    # Vez do usuário
-    if fase == 'pré-flop':
-        equidade = calcular_equidade(hand, [], total_jogadores - 1)
-        print(f"\nEquidade (pré-flop): {equidade}%")
-        print(f"\nRecomendação: {recomendar_jogada(equidade, aposta_atual, pot)}")
+    # Fechar o ciclo: garantir que todos os jogadores ativos tenham a oportunidade de agir novamente
+    for i in range(1, total_jogadores + 1):
+        if i in jogadores_ativos:
+            acao, pot, aposta_atual, jogadores_ativos = perguntar_acao(i, pot, aposta_atual, fase, usuario, total_jogadores, jogadores_ativos)
+            if acao == 'raise':
+                ultimo_raise = aposta_atual
     
-    for i in range(posicao_usuario + 1, total_jogadores + 1):  # Jogadores após o usuário
-        acao, pot, aposta_atual = perguntar_acao(i, pot, aposta_atual, fase, usuario, total_jogadores)
-    
-    for i in range(1, 3):  # Jogador 1 (Small Blind) e Jogador 2 (Big Blind)
-        acao, pot, aposta_atual = perguntar_acao(i, pot, aposta_atual, fase, usuario, total_jogadores)
-    
-    return pot, aposta_atual
+    return pot, aposta_atual, jogadores_ativos, ultimo_raise
 
 # Função principal
 def main():
@@ -136,23 +148,27 @@ def main():
     total_jogadores = num_jogadores + 1
     posicao_usuario = int(input(f"Qual é a sua posição de jogada após os blinds? (1 a {total_jogadores}): "))
 
-    pot = 3  # Small Blind (1 ficha) + Big Blind (2 fichas)
-    aposta_atual = 2
+    pot = 150  # Small Blind ($50) + Big Blind ($100)
+    aposta_atual = 100  # Big Blind
 
-    print("\nSmall Blind (1 ficha) e Big Blind (2 fichas) são postados.")
+    print("\nSmall Blind ($50) e Big Blind ($100) são postados.")
 
     # Cartas do jogador
     global hand
     hand = [input(f"Digite a carta {i+1} da sua mão (ex: AH para Ás de Copas): ").upper() for i in range(2)]
     print(f"\nSua mão: {[carta + NAIPES[carta[-1]] for carta in hand]}")
 
+    # Lista de jogadores ativos
+    jogadores_ativos = list(range(1, total_jogadores + 1))
+
     # *** PRÉ-FLOP ***
 
     print("\n--- Ações Pré-Flop ---")
     fase = 'pré-flop'
+    ultimo_raise = None
 
     # Perguntar ações dos jogadores na ordem correta
-    pot, aposta_atual = perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, posicao_usuario)
+    pot, aposta_atual, jogadores_ativos, ultimo_raise = perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, posicao_usuario, jogadores_ativos, ultimo_raise)
 
     # *** FLOP ***
     print("\n--- Fase do Flop ---")
@@ -160,11 +176,11 @@ def main():
     print(f"\nBoard (Flop): {[carta + NAIPES[carta[-1]] for carta in board]}")
 
     fase = 'flop'
-    pot, aposta_atual = perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, posicao_usuario)
+    pot, aposta_atual, jogadores_ativos, ultimo_raise = perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, posicao_usuario, jogadores_ativos, ultimo_raise)
 
     equidade = calcular_equidade(hand, board, num_jogadores)
     print(f"\nEquidade (flop): {equidade}%")
-    print(f"\nRecomendação: {recomendar_jogada(equidade, aposta_atual, pot)}")
+    print(f"\nRecomendação: {recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise)}")
 
     # *** TURN ***
     print("\n--- Fase do Turn ---")
@@ -172,11 +188,11 @@ def main():
     print(f"\nBoard (Turn): {[carta + NAIPES[carta[-1]] for carta in board]}")
 
     fase = 'turn'
-    pot, aposta_atual = perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, posicao_usuario)
+    pot, aposta_atual, jogadores_ativos, ultimo_raise = perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, posicao_usuario, jogadores_ativos, ultimo_raise)
 
     equidade = calcular_equidade(hand, board, num_jogadores)
     print(f"\nEquidade (turn): {equidade}%")
-    print(f"\nRecomendação: {recomendar_jogada(equidade, aposta_atual, pot)}")
+    print(f"\nRecomendação: {recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise)}")
 
     # *** RIVER ***
     print("\n--- Fase do River ---")
@@ -184,11 +200,11 @@ def main():
     print(f"\nBoard (River): {[carta + NAIPES[carta[-1]] for carta in board]}")
 
     fase = 'river'
-    pot, aposta_atual = perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, posicao_usuario)
+    pot, aposta_atual, jogadores_ativos, ultimo_raise = perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, posicao_usuario, jogadores_ativos, ultimo_raise)
 
     equidade = calcular_equidade(hand, board, num_jogadores)
     print(f"\nEquidade (river): {equidade}%")
-    print(f"\nRecomendação: {recomendar_jogada(equidade, aposta_atual, pot)}")
+    print(f"\nRecomendação: {recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise)}")
 
     print("\n--- Showdown ---")
     print("Fim da rodada! Revelem suas cartas!")
