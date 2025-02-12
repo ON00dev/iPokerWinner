@@ -2,6 +2,10 @@ import random
 from itertools import combinations
 from functools import lru_cache
 import os
+from colorama import Fore, Back, Style, init
+
+# Inicializa o colorama
+init(autoreset=True)
 
 os.system('cls')
 
@@ -19,11 +23,11 @@ def perguntar_acao(jogador, pot, aposta_atual, fase, usuario, num_jogadores, jog
     # Verifica se é a vez do usuário e fornece sugestão
     if jogador == usuario:
         equidade = calcular_equidade(hand, board if 'board' in globals() else [], num_jogadores - 1)
-        print(f"\nEquidade ({fase}): {equidade}%")
-        print(f"\nRecomendação: {recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise)}")
+        print(f"\n{Fore.CYAN}Equidade ({fase}): {equidade}%")
+        print(f"\n{Fore.GREEN}Recomendação: {recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise)}")
         # Considera a ação do usuário como concluída sem perguntar
         acao = recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise).lower()
-        print(f"Jogador {jogador} (você) escolheu: {acao}")
+        print(f"{Fore.YELLOW}Jogador {jogador} (você) escolheu: {acao}")
         if acao == 'fold':
             jogadores_ativos.remove(jogador)
         elif acao == 'call':
@@ -31,36 +35,36 @@ def perguntar_acao(jogador, pot, aposta_atual, fase, usuario, num_jogadores, jog
         elif acao == 'check':
             pass  # Não altera o pot
         elif acao == 'raise':
-            valor_raise = int(input(f"Qual foi o valor do raise do jogador {jogador}? $"))
+            valor_raise = int(input(f"{Fore.YELLOW}Qual foi o valor do raise do jogador {jogador}? $"))
             pot += valor_raise
             aposta_atual = valor_raise
             ultimo_raise = valor_raise
         return acao, pot, aposta_atual, jogadores_ativos, ultimo_raise
     
     while True:
-        acao = input(f"\nQual foi a ação do jogador {jogador}? (fold, call, check, raise): ").lower()
+        acao = input(f"\n{Fore.YELLOW}Qual foi a ação do jogador {jogador}? (fold, call, check, raise): ").lower()
         if acao in ['fold', 'call', 'check', 'raise']:
             # Verifica se a ação é válida
             if acao == 'call' and aposta_atual == 0:
-                print("Call inválido. Nenhuma aposta foi feita nesta rodada. Use 'check'.")
+                print(f"{Fore.RED}Call inválido. Nenhuma aposta foi feita nesta rodada. Use 'check'.")
                 continue
             if acao == 'check' and aposta_atual > 0 and jogador != 2:
-                print("Check inválido. Há uma aposta ativa. Use 'call' ou 'raise'.")
+                print(f"{Fore.RED}Check inválido. Há uma aposta ativa. Use 'call' ou 'raise'.")
                 continue
             break
-        print("Ação inválida. Escolha entre fold, call, check ou raise.")
+        print(f"{Fore.RED}Ação inválida. Escolha entre fold, call, check ou raise.")
     
     if acao == 'fold':
         jogadores_ativos.remove(jogador)
     elif acao == 'call':
         pot += aposta_atual
     elif acao == 'raise':
-        valor_raise = int(input(f"Qual foi o valor do raise do jogador {jogador}? $"))
+        valor_raise = int(input(f"{Fore.YELLOW}Qual foi o valor do raise do jogador {jogador}? $"))
         pot += valor_raise
         aposta_atual = valor_raise
         ultimo_raise = valor_raise
     
-    print(f"Pot atual: ${pot}")
+    print(f"{Fore.GREEN}Pot atual: ${pot}")
     return acao, pot, aposta_atual, jogadores_ativos, ultimo_raise
 
 # Simulação de Monte Carlo para calcular equidade
@@ -133,6 +137,7 @@ def recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise=None):
         else:
             base = ultimo_raise
         
+        # Sugestões de Raise
         sugestoes = {
             "1/4x": int(base * 0.25),
             "1/2x": int(base * 0.5),
@@ -142,9 +147,24 @@ def recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise=None):
             "All-in": pot  # Supondo que o all-in seja o valor total do pote
         }
         
-        print("\nSugestões de Raise:")
+        # Calcular o Valor Esperado (EV) para cada sugestão de raise
+        ev_sugestoes = {}
         for opcao, valor in sugestoes.items():
-            print(f"{opcao}: ${valor}")
+            lucro_potencial = pot + valor  # O que você pode ganhar
+            perda_potencial = valor  # O que você pode perder
+            ev = (equidade / 100) * lucro_potencial - (1 - equidade / 100) * perda_potencial
+            ev_sugestoes[opcao] = ev
+        
+        # Encontrar a sugestão com o maior EV
+        melhor_opcao = max(ev_sugestoes, key=ev_sugestoes.get)
+        melhor_ev = ev_sugestoes[melhor_opcao]
+        
+        print(f"\n{Fore.CYAN}Sugestões de Raise com Valor Esperado (EV):")
+        for opcao, valor in sugestoes.items():
+            ev = ev_sugestoes[opcao]
+            print(f"{Fore.YELLOW}{opcao}: ${valor} (EV: ${ev:.2f})")
+        
+        print(f"\n{Fore.GREEN}Melhor sugestão: {melhor_opcao} (EV: ${melhor_ev:.2f})")
         
         return "Raise"
 
@@ -158,46 +178,57 @@ def perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atua
         # Continua a partir do próximo jogador após o último que agiu
         inicio = (ultimo_jogador % total_jogadores) + 1
 
-    # Perguntar ações dos jogadores na ordem correta
-    for i in range(inicio, total_jogadores + 1):
+    # Loop para perguntar ações dos jogadores
+    i = inicio
+    while i <= total_jogadores:
         if i in jogadores_ativos:
-            acao, pot, aposta_atual, jogadores_ativos, ultimo_raise = perguntar_acao(i, pot, aposta_atual, fase, usuario, total_jogadores, jogadores_ativos, ultimo_raise)
-            ultimo_jogador = i  # Atualiza o último jogador que agiu
-    
+            acao, pot, aposta_atual, jogadores_ativos, ultimo_raise = perguntar_acao(
+                i, pot, aposta_atual, fase, usuario, total_jogadores, jogadores_ativos, ultimo_raise
+            )
+            ultimo_jogador = i
+
+            # Se houve um raise, continue a partir do próximo jogador
+            if acao == 'raise':
+                inicio = (i % total_jogadores) + 1  # Próximo jogador após o raise
+                i = inicio - 1  # Ajusta o índice para o próximo jogador
+        i += 1
+
     # Fechar o ciclo: perguntar aos blinds (jogadores 1 e 2) se ainda estiverem ativos
     if fase == 'pré-flop':
         for i in range(1, 3):
             if i in jogadores_ativos:
-                acao, pot, aposta_atual, jogadores_ativos, ultimo_raise = perguntar_acao(i, pot, aposta_atual, fase, usuario, total_jogadores, jogadores_ativos, ultimo_raise)
-                ultimo_jogador = i  # Atualiza o último jogador que agiu
-    
+                acao, pot, aposta_atual, jogadores_ativos, ultimo_raise = perguntar_acao(
+                    i, pot, aposta_atual, fase, usuario, total_jogadores, jogadores_ativos, ultimo_raise
+                )
+                ultimo_jogador = i
+
     return pot, aposta_atual, jogadores_ativos, ultimo_raise, ultimo_jogador
 
 # Função principal
 def main():
-    print("--- iPokerWinner ---\n".upper())
-    print("Bem-vindo ao Simulador de Texas Hold'em!")
+    print(f"{Fore.BLUE}--- iPokerWinner ---\n".upper())
+    print(f"{Fore.CYAN}Bem-vindo ao Simulador de Texas Hold'em!")
 
-    num_jogadores = int(input("Quantos jogadores estão na mesa (excluindo você)? "))
+    num_jogadores = int(input(f"{Fore.YELLOW}Quantos jogadores estão na mesa (excluindo você)? "))
     total_jogadores = num_jogadores + 1
-    posicao_usuario = int(input(f"Qual é a sua posição de jogada após os blinds? (1 a {total_jogadores}): "))
+    posicao_usuario = int(input(f"{Fore.YELLOW}Qual é a sua posição de jogada após os blinds? (1 a {total_jogadores}): "))
 
     pot = 150  # Small Blind ($50) + Big Blind ($100)
     aposta_atual = 100  # Big Blind
 
-    print("\nSmall Blind ($50) e Big Blind ($100) são postados.")
+    print(f"\n{Fore.GREEN}Small Blind ($50) e Big Blind ($100) são postados.")
 
     # Cartas do jogador
     global hand
-    hand = [input(f"Digite a carta {i+1} da sua mão (ex: AH para Ás de Copas): ").upper() for i in range(2)]
-    print(f"\nSua mão: {[carta + NAIPES[carta[-1]] for carta in hand]}")
+    hand = [input(f"{Fore.YELLOW}Digite a carta {i+1} da sua mão (ex: AH para Ás de Copas): ").upper() for i in range(2)]
+    print(f"\n{Fore.CYAN}Sua mão: {[carta + NAIPES[carta[-1]] for carta in hand]}")
 
     # Lista de jogadores ativos
     jogadores_ativos = list(range(1, total_jogadores + 1))
 
     # *** PRÉ-FLOP ***
 
-    print("\n--- Ações Pré-Flop ---")
+    print(f"\n{Fore.BLUE}--- Ações Pré-Flop ---")
     fase = 'pré-flop'
     ultimo_raise = None
     ultimo_jogador = None
@@ -206,44 +237,44 @@ def main():
     pot, aposta_atual, jogadores_ativos, ultimo_raise, ultimo_jogador = perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, posicao_usuario, jogadores_ativos, ultimo_raise, ultimo_jogador)
 
     # *** FLOP ***
-    print("\n--- Fase do Flop ---")
+    print(f"\n{Fore.BLUE}--- Fase do Flop ---")
     global board
-    board = [input(f"Digite a carta {i+1} do flop: ").upper() for i in range(3)]
-    print(f"\nBoard (Flop): {[carta + NAIPES[carta[-1]] for carta in board]}")
+    board = [input(f"{Fore.YELLOW}Digite a carta {i+1} do flop: ").upper() for i in range(3)]
+    print(f"\n{Fore.CYAN}Board (Flop): {[carta + NAIPES[carta[-1]] for carta in board]}")
 
     fase = 'flop'
     pot, aposta_atual, jogadores_ativos, ultimo_raise, ultimo_jogador = perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, posicao_usuario, jogadores_ativos, ultimo_raise, ultimo_jogador)
 
     equidade = calcular_equidade(hand, board, num_jogadores)
-    print(f"\nEquidade (flop): {equidade}%")
-    print(f"\nRecomendação: {recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise)}")
+    print(f"\n{Fore.CYAN}Equidade (flop): {equidade}%")
+    print(f"\n{Fore.GREEN}Recomendação: {recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise)}")
 
     # *** TURN ***
-    print("\n--- Fase do Turn ---")
-    board.append(input("Digite a carta do turn: ").upper())
-    print(f"\nBoard (Turn): {[carta + NAIPES[carta[-1]] for carta in board]}")
+    print(f"\n{Fore.BLUE}--- Fase do Turn ---")
+    board.append(input(f"{Fore.YELLOW}Digite a carta do turn: ").upper())
+    print(f"\n{Fore.CYAN}Board (Turn): {[carta + NAIPES[carta[-1]] for carta in board]}")
 
     fase = 'turn'
     pot, aposta_atual, jogadores_ativos, ultimo_raise, ultimo_jogador = perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, posicao_usuario, jogadores_ativos, ultimo_raise, ultimo_jogador)
 
     equidade = calcular_equidade(hand, board, num_jogadores)
-    print(f"\nEquidade (turn): {equidade}%")
-    print(f"\nRecomendação: {recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise)}")
+    print(f"\n{Fore.CYAN}Equidade (turn): {equidade}%")
+    print(f"\n{Fore.GREEN}Recomendação: {recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise)}")
 
     # *** RIVER ***
-    print("\n--- Fase do River ---")
-    board.append(input("Digite a carta do river: ").upper())
-    print(f"\nBoard (River): {[carta + NAIPES[carta[-1]] for carta in board]}")
+    print(f"\n{Fore.BLUE}--- Fase do River ---")
+    board.append(input(f"{Fore.YELLOW}Digite a carta do river: ").upper())
+    print(f"\n{Fore.CYAN}Board (River): {[carta + NAIPES[carta[-1]] for carta in board]}")
 
     fase = 'river'
     pot, aposta_atual, jogadores_ativos, ultimo_raise, ultimo_jogador = perguntar_acoes_jogadores(total_jogadores, posicao_usuario, pot, aposta_atual, fase, posicao_usuario, jogadores_ativos, ultimo_raise, ultimo_jogador)
 
     equidade = calcular_equidade(hand, board, num_jogadores)
-    print(f"\nEquidade (river): {equidade}%")
-    print(f"\nRecomendação: {recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise)}")
+    print(f"\n{Fore.CYAN}Equidade (river): {equidade}%")
+    print(f"\n{Fore.GREEN}Recomendação: {recomendar_jogada(equidade, aposta_atual, pot, ultimo_raise)}")
 
-    print("\n--- Showdown ---")
-    print("Fim da rodada! Revelem suas cartas!")
+    print(f"\n{Fore.BLUE}--- Showdown ---")
+    print(f"{Fore.CYAN}Fim da rodada! Revelem suas cartas!")
 
 if __name__ == "__main__":
     main()
